@@ -9,6 +9,12 @@ const MAX_ACCURACY_M = 50;
 
 const $ = (s, el = document) => el.querySelector(s);
 const $$ = (s, el = document) => [...el.querySelectorAll(s)];
+const NATIVE = !!window.Capacitor?.isNativePlatform?.();
+const plugin = name => (NATIVE ? window.Capacitor.registerPlugin(name) : null);
+const BgGeo = plugin('BackgroundGeolocation');
+const Filesystem = plugin('Filesystem');
+const Share = plugin('Share');
+const LocalNotifications = plugin('LocalNotifications');
 const uid = () => Date.now().toString(36) + Math.random().toString(36).slice(2, 7);
 const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 
@@ -84,7 +90,17 @@ function toast(msg) {
   clearTimeout(toastTimer); toastTimer = setTimeout(() => (t.hidden = true), 3200);
 }
 
-function download(name, content, type) {
+// content: string, or {base64} for binary. On Android, saves to cache and opens the share sheet.
+async function download(name, content, type) {
+  if (NATIVE) {
+    try {
+      const isB64 = typeof content === 'object';
+      const { uri } = await Filesystem.writeFile({ path: name, data: isB64 ? content.base64 : content, directory: 'CACHE', ...(isB64 ? {} : { encoding: 'utf8' }) });
+      await Share.share({ title: name, files: [uri], dialogTitle: 'Save or send ' + name });
+    } catch (e) { if (!/cancel/i.test(e?.message || '')) toast('Could not export: ' + (e?.message || e)); }
+    return;
+  }
+  if (typeof content === 'object') content = Uint8Array.from(atob(content.base64), c => c.charCodeAt(0));
   const url = URL.createObjectURL(new Blob([content], { type }));
   const a = Object.assign(document.createElement('a'), { href: url, download: name });
   document.body.append(a); a.click(); a.remove();
@@ -96,7 +112,38 @@ const tracker = { watchId: null, last: null, fastCount: 0, wakeLock: null, timer
 
 function needWatch() { return !!state.active || (state.settings.autoTrack && !state.settings.holiday); }
 
+async function nativeWatch(on) {
+  if (on) {
+    tracker.watchId = 'pending';
+    try { await LocalNotifications.requestPermissions(); } catch { /* notification permission is optional */ }
+    try {
+      tracker.watchId = await BgGeo.addWatcher({
+        backgroundTitle: state.active ? 'TripLedger is recording a trip' : 'TripLedger auto-tracking is on',
+        backgroundMessage: 'Tap to open. Turn off auto-track or use holiday mode to stop.',
+        requestPermissions: true, stale: false, distanceFilter: 10,
+      }, (loc, err) => {
+        if (err) { onGeoError({ code: err.code === 'NOT_AUTHORIZED' ? 1 : 2, PERMISSION_DENIED: 1, native: err }); return; }
+        if (loc) onPosition({ coords: loc, timestamp: loc.time });
+      });
+      if (!needWatch()) nativeWatch(false); // turned off while we were waiting
+    } catch (e) { tracker.watchId = null; toast('Could not start GPS: ' + (e?.message || e)); }
+  } else if (tracker.watchId && tracker.watchId !== 'pending') {
+    const id = tracker.watchId; tracker.watchId = null;
+    try { await BgGeo.removeWatcher({ id }); } catch { /* already gone */ }
+  }
+}
+
+// Restart the native watcher so its notification text matches the state (trip vs. auto-track).
+function refreshNativeWatch() {
+  if (NATIVE && tracker.watchId && tracker.watchId !== 'pending') { nativeWatch(false).then(() => needWatch() && nativeWatch(true)); }
+}
+
 function syncWatch() {
+  if (NATIVE) {
+    if (needWatch() && tracker.watchId == null) nativeWatch(true);
+    else if (!needWatch() && tracker.watchId != null) { nativeWatch(false); tracker.last = null; tracker.fastCount = 0; }
+    renderStatus(); return;
+  }
   if (!('geolocation' in navigator)) { $('#trackHint').textContent = 'GPS is not available in this browser.'; return; }
   if (needWatch() && tracker.watchId == null) {
     tracker.watchId = navigator.geolocation.watchPosition(onPosition, onGeoError, { enableHighAccuracy: true, maximumAge: 0, timeout: 30000 });
@@ -116,8 +163,10 @@ document.addEventListener('visibilitychange', () => { if (document.visibilitySta
 
 function onGeoError(err) {
   if (err.code === err.PERMISSION_DENIED) {
+    if (NATIVE && confirm('TripLedger needs location permission ("Allow all the time" for auto-tracking). Open settings now?')) BgGeo.openSettings();
     toast('Location permission denied. Enable it in your browser settings to track trips.');
     state.settings.autoTrack = false; $('#autoTrack').checked = false; save();
+    if (NATIVE) { nativeWatch(false); }
     if (state.active && !state.active.path.length) { state.active = null; save(); }
     syncWatch(); renderTrack();
   }
@@ -158,7 +207,7 @@ function startTrip(auto = false, pt = null) {
   const now = Date.now();
   state.active = { id: uid(), start: now, auto, meters: 0, path: pt ? [pt] : [], startCoord: pt, lastMoving: now, vehicleId: state.settings.defaultVehicleId };
   tracker.fastCount = 0;
-  save(); syncWatch(); renderTrack();
+  save(); syncWatch(); refreshNativeWatch(); renderTrack();
   clearInterval(tracker.timer); tracker.timer = setInterval(renderLive, 1000);
 }
 
@@ -167,7 +216,7 @@ function finishTrip() {
   state.active = null;
   clearInterval(tracker.timer);
   const miles = mToMi(a.meters);
-  if (miles < 0.1) { save(); syncWatch(); renderAll(); toast('Trip under 0.1 mi — discarded.'); return; }
+  if (miles < 0.1) { save(); syncWatch(); refreshNativeWatch(); renderAll(); toast('Trip under 0.1 mi — discarded.'); return; }
   const endCoord = a.path[a.path.length - 1] || null;
   const end = a.auto ? a.lastMoving : Date.now();
   const v = state.vehicles.find(x => x.id === a.vehicleId);
@@ -180,7 +229,7 @@ function finishTrip() {
   };
   if (v && odoStart != null) v.odometer = trip.odoEnd;
   state.trips.push(trip);
-  save(); syncWatch(); renderAll();
+  save(); syncWatch(); refreshNativeWatch(); renderAll();
   toast(`Trip saved: ${fmtMi(miles)} mi`);
 }
 
@@ -370,31 +419,46 @@ function buildCsv() {
   return '﻿' + rows.map(row => row.map(q).join(',')).join('\r\n');
 }
 
-function printReport() {
+function buildPdf() {
   const r = reportData();
   state.settings.driver = $('#rDriver').value.trim(); save();
-  const vName = r.veh ? vehicleName(r.veh) : 'All vehicles';
   const v = state.vehicles.find(x => x.id === r.veh);
-  $('#printArea').innerHTML = `
-    <h1>Mileage Log</h1>
-    <p><b>Driver:</b> ${esc(state.settings.driver || '________________')} &nbsp; <b>Vehicle:</b> ${esc(vName)}${v?.plate ? ' (' + esc(v.plate) + ')' : ''}
-    &nbsp; <b>Period:</b> ${fmtDate(+r.from)} – ${fmtDate(+r.to)}${$('#rWorkplace').value ? ' &nbsp; <b>Workplace:</b> ' + esc($('#rWorkplace').value) : ''}</p>
-    <table>
-      <thead><tr><th>Date</th><th>Time</th><th>From</th><th>To</th><th>Business purpose</th><th>Category</th><th class="num">Odo start</th><th class="num">Odo end</th><th class="num">Miles</th><th class="num">Rate</th><th class="num">Amount</th></tr></thead>
-      <tbody>${r.trips.map(t => `<tr><td>${isoDate(new Date(t.start))}</td><td>${fmtTime(t.start)}${t.end ? '–' + fmtTime(t.end) : ''}</td>
-        <td>${esc(t.from)}</td><td>${esc(t.to)}</td><td>${esc(t.purpose || t.notes)}</td><td>${t.category}</td>
-        <td class="num">${t.odoStart ?? ''}</td><td class="num">${t.odoEnd ?? ''}</td><td class="num">${fmtMi(t.miles)}</td>
-        <td class="num">$${rateFor(t.category).toFixed(3)}</td><td class="num">${money(t.miles * rateFor(t.category))}</td></tr>`).join('')}</tbody>
-      <tfoot><tr><th colspan="8">Total (${r.trips.length} trips)</th><th class="num">${fmtMi(r.total)}</th><th></th><th class="num">${money(r.amount)}</th></tr></tfoot>
-    </table>
-    <p><b>Total miles driven in period (all purposes):</b> ${fmtMi(r.allMiles)} mi.
-    ${CATEGORIES.map(c => `${c}: ${fmtMi(r.byCat[c].miles)} mi (${r.allMiles ? (r.byCat[c].miles / r.allMiles * 100).toFixed(1) : 0}%)`).join(' · ')}</p>
-    <p style="font-size:8pt">Records kept contemporaneously with the TripLedger app. Generated ${new Date().toLocaleString()}.</p>
-    <div class="sig"><div>Driver signature / date</div><div>Approved by / date</div></div>`;
-  window.print();
+  const vName = (r.veh ? vehicleName(r.veh) : 'All vehicles') + (v?.plate ? ` (${v.plate})` : '');
+  const doc = new window.jspdf.jsPDF({ orientation: 'landscape', unit: 'pt', format: 'letter' });
+  doc.setFontSize(18); doc.text('Mileage Log', 40, 44);
+  doc.setFontSize(10);
+  const wp = $('#rWorkplace').value.trim();
+  doc.text(`Driver: ${state.settings.driver || '________________'}    Vehicle: ${vName}    Period: ${fmtDate(+r.from)} – ${fmtDate(+r.to)}${wp ? '    Workplace: ' + wp : ''}`, 40, 64);
+  const money2 = n => '$' + n.toFixed(2);
+  doc.autoTable({
+    startY: 78, styles: { fontSize: 8, cellPadding: 3 }, headStyles: { fillColor: [15, 118, 110] },
+    head: [['Date', 'Time', 'From', 'To', 'Business purpose', 'Category', 'Odo start', 'Odo end', 'Miles', 'Rate', 'Amount']],
+    body: r.trips.map(t => [isoDate(new Date(t.start)), fmtTime(t.start) + (t.end ? '–' + fmtTime(t.end) : ''), t.from, t.to, t.purpose || t.notes || '',
+      t.category, t.odoStart ?? '', t.odoEnd ?? '', fmtMi(t.miles), '$' + rateFor(t.category).toFixed(3), money2(t.miles * rateFor(t.category))]),
+    foot: [[{ content: `Total (${r.trips.length} trips)`, colSpan: 8 }, fmtMi(r.total), '', money2(r.amount)]],
+    footStyles: { fillColor: [226, 232, 240], textColor: 20 },
+    columnStyles: { 6: { halign: 'right' }, 7: { halign: 'right' }, 8: { halign: 'right' }, 9: { halign: 'right' }, 10: { halign: 'right' } },
+  });
+  let y = doc.lastAutoTable.finalY + 20;
+  const ph = doc.internal.pageSize.getHeight();
+  if (y > ph - 110) { doc.addPage(); y = 50; }
+  doc.text(`Total miles driven in period (all purposes): ${fmtMi(r.allMiles)} mi`, 40, y);
+  doc.text(CATEGORIES.map(c => `${c}: ${fmtMi(r.byCat[c].miles)} mi (${r.allMiles ? (r.byCat[c].miles / r.allMiles * 100).toFixed(1) : '0.0'}%)`).join('    '), 40, y + 14);
+  doc.setFontSize(8); doc.text(`Records kept contemporaneously with the TripLedger app. Generated ${new Date().toLocaleString()}.`, 40, y + 30);
+  doc.setFontSize(10);
+  doc.line(40, y + 75, 300, y + 75); doc.text('Driver signature / date', 40, y + 88);
+  doc.line(360, y + 75, 620, y + 75); doc.text('Approved by / date', 360, y + 88);
+  return doc;
+}
+
+function exportPdf() {
+  if (!window.jspdf) { toast('PDF library failed to load.'); return; }
+  const doc = buildPdf();
+  download(reportFilename('pdf'), { base64: doc.output('datauristring').split(',')[1] }, 'application/pdf');
 }
 
 async function shareReport() {
+  if (NATIVE) { exportPdf(); return; }
   const csv = buildCsv(), name = reportFilename('csv');
   const file = new File([csv], name, { type: 'text/csv' });
   if (navigator.canShare?.({ files: [file] })) {
@@ -553,7 +617,7 @@ $('#bulkDelete').addEventListener('click', () => {
 ['#rFrom', '#rTo', '#rVehicle', '#rWorkplace'].forEach(s => $(s).addEventListener('input', renderReportSummary));
 $('#rCategories').addEventListener('change', renderReportSummary);
 $('#rDriver').addEventListener('change', e => { state.settings.driver = e.target.value.trim(); save(); });
-$('#btnReportView').addEventListener('click', printReport);
+$('#btnReportView').addEventListener('click', exportPdf);
 $('#btnReportCsv').addEventListener('click', () => download(reportFilename('csv'), buildCsv(), 'text/csv'));
 $('#btnReportShare').addEventListener('click', shareReport);
 
@@ -567,14 +631,36 @@ $('#whEnd').addEventListener('change', e => { state.settings.workHours.end = e.t
 $('#autoSpeed').addEventListener('change', e => { state.settings.autoSpeedMph = Math.min(40, Math.max(5, +e.target.value || 15)); save(); renderAll(); });
 $('#stopMinutes').addEventListener('change', e => { state.settings.stopMinutes = Math.min(30, Math.max(1, +e.target.value || 5)); save(); renderAll(); });
 $('#holidayMode').addEventListener('change', e => { state.settings.holiday = e.target.checked; save(); syncWatch(); toast(e.target.checked ? 'Holiday mode on — auto-tracking paused.' : 'Holiday mode off.'); });
+async function scheduleNativeReminder() {
+  if (!NATIVE) return;
+  try {
+    await LocalNotifications.cancel({ notifications: [{ id: 1 }] });
+    const r = state.settings.reminder; if (r === 'off') return;
+    const perm = await LocalNotifications.requestPermissions();
+    if (perm.display !== 'granted') { toast('Allow notifications to get report reminders.'); return; }
+    await LocalNotifications.schedule({ notifications: [{
+      id: 1, title: 'TripLedger', body: 'Time to review your trips and send your mileage report.',
+      schedule: { on: r === 'weekly' ? { weekday: 2, hour: 9, minute: 0 } : { day: 1, hour: 9, minute: 0 }, allowWhileIdle: true },
+    }] });
+  } catch (e) { toast('Could not schedule reminder: ' + (e?.message || e)); }
+}
 $('#reminder').addEventListener('change', async e => {
   state.settings.reminder = e.target.value; save();
+  if (NATIVE) { scheduleNativeReminder(); return; }
   if (e.target.value !== 'off' && 'Notification' in window && Notification.permission === 'default') { try { await Notification.requestPermission(); } catch { /* ignore */ } }
 });
+function currentPosition(ok, fail) {
+  if (!NATIVE) { navigator.geolocation.getCurrentPosition(ok, fail, { enableHighAccuracy: true, timeout: 20000 }); return; }
+  let id = null, done = false;
+  const finish = (pos, err) => { if (done) return; done = true; if (id) BgGeo.removeWatcher({ id }); pos ? ok(pos) : fail(err); };
+  BgGeo.addWatcher({ requestPermissions: true, stale: false }, (loc, err) => finish(loc && { coords: loc }, err))
+    .then(w => { id = w; if (done) BgGeo.removeWatcher({ id }); });
+  setTimeout(() => finish(null, 'timeout'), 20000);
+}
 $('#btnAddPlace').addEventListener('click', () => {
-  if (!navigator.geolocation) return toast('GPS not available.');
+  if (!NATIVE && !navigator.geolocation) return toast('GPS not available.');
   toast('Getting your location…');
-  navigator.geolocation.getCurrentPosition(pos => {
+  currentPosition(pos => {
     const name = prompt('Name this place (e.g. Office, Client – Smith):'); if (!name?.trim()) return;
     state.places.push({ id: uid(), name: name.trim(), lat: pos.coords.latitude, lng: pos.coords.longitude });
     // Relabel existing trips that start/end here.
@@ -583,7 +669,7 @@ $('#btnAddPlace').addEventListener('click', () => {
       if (t.endCoord && t.to === `${t.endCoord[0].toFixed(5)}, ${t.endCoord[1].toFixed(5)}`) t.to = placeLabel(t.endCoord);
     }
     save(); renderAll(); toast('Place saved');
-  }, () => toast('Could not get your location.'), { enableHighAccuracy: true, timeout: 20000 });
+  }, () => toast('Could not get your location.'));
 });
 $('#btnBackup').addEventListener('click', () => download(`tripledger-backup-${isoDate(new Date())}.json`, JSON.stringify(state, null, 1), 'application/json'));
 $('#fileRestore').addEventListener('change', async e => {
@@ -614,4 +700,8 @@ renderAll();
 if (state.active) { tracker.timer = setInterval(renderLive, 1000); }
 syncWatch();
 checkReminder(); setInterval(checkReminder, 60 * 60 * 1000);
-if ('serviceWorker' in navigator && location.protocol !== 'file:') navigator.serviceWorker.register('sw.js').catch(() => {});
+if (NATIVE) {
+  $('#trackHint').textContent = 'Tracking keeps running in the background with a notification. For auto-track, allow location "All the time" and turn off battery optimization for TripLedger.';
+  $('#btnReportView').textContent = 'PDF';
+  $('#btnReportShare').hidden = true;
+} else if ('serviceWorker' in navigator && location.protocol !== 'file:') navigator.serviceWorker.register('sw.js').catch(() => {});

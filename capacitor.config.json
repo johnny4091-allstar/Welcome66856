@@ -1,0 +1,13 @@
+{
+  "appId": "com.tripledger.app",
+  "appName": "TripLedger",
+  "webDir": "www",
+  "android": {
+    "useLegacyBridge": true
+  },
+  "plugins": {
+    "LocalNotifications": {
+      "iconColor": "#0f766e"
+    }
+  }
+}

@@ -82,7 +82,7 @@
         <label>Include categories</label>
         <div id="rCategories" class="chips"></div>
         <div class="btn-row">
-          <button class="btn primary" id="btnReportView">Preview / PDF</button>
+          <button class="btn primary" id="btnReportView">PDF report</button>
           <button class="btn" id="btnReportCsv">Excel (CSV)</button>
           <button class="btn" id="btnReportShare">Share</button>
         </div>
@@ -184,7 +184,8 @@
   <datalist id="placeNames"></datalist>
 
   <div id="toast" class="toast" hidden></div>
-  <div id="printArea"></div>
+  <script src="vendor/jspdf.umd.min.js"></script>
+  <script src="vendor/jspdf.plugin.autotable.min.js"></script>
   <script src="app.js"></script>
 </body>
 </html>

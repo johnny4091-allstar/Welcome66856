@@ -1,0 +1,12 @@
+node_modules/
+www/vendor/
+android/app/build/
+android/build/
+android/.gradle/
+android/local.properties
+android/app/src/main/assets/public/
+android/capacitor-cordova-android-plugins/
+*.keystore
+!tripledger-sideload.keystore
+!debug.keystore
+dist/

@@ -85,17 +85,3 @@ dialog::backdrop { background: rgba(15,23,42,.5); }
 table.summary { width: 100%; border-collapse: collapse; font-size: .9rem; }
 table.summary td, table.summary th { padding: 6px 4px; border-bottom: 1px solid var(--line); text-align: left; }
 table.summary td:last-child, table.summary th:last-child { text-align: right; }
-#printArea { display: none; }
-
-@media print {
-  body { background: #fff; color: #000; font-size: 10pt; }
-  body > *:not(#printArea) { display: none !important; }
-  #printArea { display: block; }
-  #printArea table { width: 100%; border-collapse: collapse; }
-  #printArea th, #printArea td { border: 1px solid #999; padding: 3px 5px; text-align: left; vertical-align: top; }
-  #printArea th { background: #eee; }
-  #printArea .num { text-align: right; }
-  #printArea h1 { font-size: 16pt; margin: 0 0 4px; }
-  #printArea .sig { margin-top: 32px; display: flex; gap: 40px; }
-  #printArea .sig div { flex: 1; border-top: 1px solid #000; padding-top: 4px; }
-}
