@@ -3,189 +3,46 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-  <meta name="theme-color" content="#0f766e">
-  <meta name="description" content="Automatic GPS mileage tracker and IRS-compliant mileage logbook.">
-  <title>TripLedger</title>
+  <meta name="theme-color" content="#0b1220">
+  <meta name="description" content="Kestrel Player: play your own Xtream Codes or M3U playlist on Android TV and phones.">
+  <title>Kestrel Player</title>
   <link rel="manifest" href="manifest.webmanifest">
   <link rel="icon" href="icons/icon.svg" type="image/svg+xml">
-  <link rel="apple-touch-icon" href="icons/icon.svg">
   <link rel="stylesheet" href="styles.css">
 </head>
 <body>
-  <header class="topbar">
-    <div class="brand"><img src="icons/icon.svg" alt="" width="28" height="28"> TripLedger</div>
-    <span id="statusPill" class="pill">Idle</span>
-  </header>
+  <div id="app">
+    <nav id="sidebar" class="sidebar" aria-label="Main">
+      <div class="brand"><img src="icons/icon.svg" alt="" width="34" height="34"><span>Kestrel</span></div>
+      <button class="nav-btn" data-view="live"><span class="ico">📺</span><span class="lbl">Live TV</span></button>
+      <button class="nav-btn" data-view="movies"><span class="ico">🎬</span><span class="lbl">Movies</span></button>
+      <button class="nav-btn" data-view="series"><span class="ico">🎞️</span><span class="lbl">Series</span></button>
+      <button class="nav-btn" data-view="favorites"><span class="ico">★</span><span class="lbl">Favourites</span></button>
+      <button class="nav-btn" data-view="search"><span class="ico">🔍</span><span class="lbl">Search</span></button>
+      <button class="nav-btn" data-view="settings"><span class="ico">⚙️</span><span class="lbl">Settings</span></button>
+    </nav>
 
-  <main>
-    <!-- TRACK -->
-    <section id="view-track" class="view active">
-      <div class="card hero">
-        <div class="hero-stats">
-          <div><span class="big" id="liveMiles">0.0</span><small>miles</small></div>
-          <div><span class="big" id="liveTime">0:00</span><small>duration</small></div>
-          <div><span class="big" id="liveSpeed">0</span><small>mph</small></div>
-        </div>
-        <button id="btnStartStop" class="btn primary huge">START TRIP</button>
-        <label class="switch-row">
-          <input type="checkbox" id="autoTrack">
-          <span>Auto-track: start when driving faster than <b id="autoSpeedLabel">15</b> mph</span>
-        </label>
-        <p class="hint" id="trackHint">Keep the app open (screen on, e.g. in a car mount) while driving. Browsers pause GPS when the app is in the background.</p>
-      </div>
+    <main id="main">
+      <div id="updateBar" class="update-bar" hidden></div>
+      <div id="view" class="view"></div>
+    </main>
+  </div>
 
-      <div class="grid2">
-        <div class="card stat"><small>This month</small><b id="statMonthMiles">0</b><span id="statMonthValue">$0</span></div>
-        <div class="card stat"><small>This year (business)</small><b id="statYearMiles">0</b><span id="statYearValue">$0</span></div>
-      </div>
+  <!-- Modal (details, PIN, confirm) -->
+  <div id="modal" class="modal" hidden>
+    <div class="modal-card" role="dialog" aria-modal="true"><div id="modalBody"></div></div>
+  </div>
 
-      <div class="card">
-        <div class="row-between"><h2>Unclassified trips</h2><button class="btn small" data-goto="trips">All trips</button></div>
-        <div id="unclassifiedList" class="trip-list"></div>
-      </div>
-      <button class="btn block" id="btnAddManual">+ Add trip manually</button>
-    </section>
-
-    <!-- TRIPS -->
-    <section id="view-trips" class="view">
-      <div class="card filters">
-        <input type="search" id="fSearch" placeholder="Search location, notes, tags…">
-        <div class="grid3">
-          <select id="fCategory"><option value="">All categories</option></select>
-          <select id="fVehicle"><option value="">All vehicles</option></select>
-          <select id="fPeriod">
-            <option value="all">All time</option><option value="month" selected>This month</option>
-            <option value="lastmonth">Last month</option><option value="year">This year</option>
-          </select>
-        </div>
-      </div>
-      <div class="bulkbar" id="bulkbar" hidden>
-        <span id="bulkCount">0 selected</span>
-        <select id="bulkCategory"><option value="">Set category…</option></select>
-        <button class="btn small danger" id="bulkDelete">Delete</button>
-      </div>
-      <div id="tripList" class="trip-list"></div>
-      <button class="btn block" id="btnAddManual2">+ Add trip manually</button>
-    </section>
-
-    <!-- REPORTS -->
-    <section id="view-reports" class="view">
-      <div class="card">
-        <h2>Create mileage report</h2>
-        <div class="grid2">
-          <label>From<input type="date" id="rFrom"></label>
-          <label>To<input type="date" id="rTo"></label>
-        </div>
-        <label>Vehicle<select id="rVehicle"></select></label>
-        <label>Driver name<input id="rDriver" placeholder="Your name"></label>
-        <label>Workplace / client (optional)<input id="rWorkplace" placeholder="e.g. Acme Corp"></label>
-        <label>Include categories</label>
-        <div id="rCategories" class="chips"></div>
-        <div class="btn-row">
-          <button class="btn primary" id="btnReportView">PDF report</button>
-          <button class="btn" id="btnReportCsv">Excel (CSV)</button>
-          <button class="btn" id="btnReportShare">Share</button>
-        </div>
-      </div>
-      <div class="card" id="reportSummary"></div>
-    </section>
-
-    <!-- SETTINGS -->
-    <section id="view-settings" class="view">
-      <div class="card">
-        <h2>Vehicles</h2>
-        <div id="vehicleList"></div>
-        <button class="btn small" id="btnAddVehicle">+ Add vehicle</button>
-      </div>
-      <div class="card">
-        <h2>Rates (per mile)</h2>
-        <p class="hint">Defaults are the IRS standard mileage rates for 2026. Verify against irs.gov, or change them to your employer's reimbursement rate.</p>
-        <div class="grid2" id="rateInputs"></div>
-      </div>
-      <div class="card">
-        <h2>Working hours</h2>
-        <p class="hint">Trips that start inside working hours are marked Business, others Personal. Leave off to classify every trip yourself.</p>
-        <label class="switch-row"><input type="checkbox" id="whEnabled"><span>Auto-classify by working hours</span></label>
-        <div class="days" id="whDays"></div>
-        <div class="grid2">
-          <label>Start<input type="time" id="whStart"></label>
-          <label>End<input type="time" id="whEnd"></label>
-        </div>
-      </div>
-      <div class="card">
-        <h2>Tracking</h2>
-        <label>Auto-start speed (mph)<input type="number" id="autoSpeed" min="5" max="40"></label>
-        <label>End trip after stopped for (minutes)<input type="number" id="stopMinutes" min="1" max="30"></label>
-        <label class="switch-row"><input type="checkbox" id="holidayMode"><span>Holiday mode (pause auto-tracking)</span></label>
-      </div>
-      <div class="card">
-        <h2>Saved places</h2>
-        <p class="hint">Trips that start or end within 150 m of a saved place are labeled with its name.</p>
-        <div id="placeList"></div>
-        <button class="btn small" id="btnAddPlace">+ Save current location</button>
-      </div>
-      <div class="card">
-        <h2>Report reminders</h2>
-        <select id="reminder">
-          <option value="off">Off</option><option value="weekly">Weekly (Mondays)</option><option value="monthly">Monthly (1st of month)</option>
-        </select>
-      </div>
-      <div class="card">
-        <h2>Your data</h2>
-        <p class="hint">Everything is stored only on this device. Back it up regularly — the IRS expects records to be kept for at least 3 years.</p>
-        <div class="btn-row">
-          <button class="btn" id="btnBackup">Download backup</button>
-          <label class="btn">Restore backup<input type="file" id="fileRestore" accept="application/json" hidden></label>
-        </div>
-      </div>
-    </section>
-  </main>
-
-  <nav class="tabbar">
-    <button data-goto="track" class="active">🚘<span>Track</span></button>
-    <button data-goto="trips">🗂️<span>Trips</span></button>
-    <button data-goto="reports">📋<span>Reports</span></button>
-    <button data-goto="settings">⚙️<span>Settings</span></button>
-  </nav>
-
-  <!-- Trip editor -->
-  <dialog id="tripDialog">
-    <form method="dialog" id="tripForm">
-      <h2 id="tripDialogTitle">Trip</h2>
-      <div id="routeSketch" class="route"></div>
-      <div class="grid2">
-        <label>Date<input type="date" name="date" required></label>
-        <label>Start time<input type="time" name="time" required></label>
-      </div>
-      <label>From<input name="from" list="placeNames" required></label>
-      <label>To<input name="to" list="placeNames" required></label>
-      <div class="grid3">
-        <label>Odometer start<input type="number" name="odoStart" step="0.1"></label>
-        <label>Odometer end<input type="number" name="odoEnd" step="0.1"></label>
-        <label>Miles<input type="number" name="miles" step="0.1" min="0" required></label>
-      </div>
-      <div class="grid2">
-        <label>Category<select name="category"></select></label>
-        <label>Vehicle<select name="vehicleId"></select></label>
-      </div>
-      <label>Business purpose<input name="purpose" placeholder="e.g. Client meeting – Smith kitchen remodel"></label>
-      <label>Workplace / client<input name="workplace"></label>
-      <label>Tags (comma separated)<input name="tags"></label>
-      <label>Notes<textarea name="notes" rows="2"></textarea></label>
-      <div class="btn-row">
-        <button class="btn danger" value="delete" id="btnTripDelete" formnovalidate>Delete</button>
-        <button class="btn" value="split" id="btnTripSplit" formnovalidate>Split</button>
-        <span class="spacer"></span>
-        <button class="btn" value="cancel" formnovalidate>Cancel</button>
-        <button class="btn primary" value="save">Save</button>
-      </div>
-    </form>
-  </dialog>
-  <datalist id="placeNames"></datalist>
+  <!-- Browser fallback player (the Android app uses the native player instead) -->
+  <div id="webPlayer" class="web-player" hidden>
+    <video id="webVideo" controls playsinline autoplay></video>
+    <div id="webPlayerTitle" class="web-player-title"></div>
+    <button id="webPlayerClose" class="btn web-player-close">✕ Close</button>
+  </div>
 
   <div id="toast" class="toast" hidden></div>
-  <script src="vendor/jspdf.umd.min.js"></script>
-  <script src="vendor/jspdf.plugin.autotable.min.js"></script>
-  <script src="app.js"></script>
+
+  <script src="vendor/hls.min.js" defer></script>
+  <script src="app.js" defer></script>
 </body>
 </html>

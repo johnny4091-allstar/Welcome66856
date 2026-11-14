@@ -1,13 +1,16 @@
 {
-  "appId": "com.tripledger.app",
-  "appName": "TripLedger",
+  "appId": "com.kestrel.player",
+  "appName": "Kestrel Player",
   "webDir": "www",
+  "server": {
+    "androidScheme": "http",
+    "cleartext": true
+  },
   "android": {
+    "allowMixedContent": true,
     "useLegacyBridge": true
   },
   "plugins": {
-    "LocalNotifications": {
-      "iconColor": "#0f766e"
-    }
+    "CapacitorHttp": { "enabled": true }
   }
 }

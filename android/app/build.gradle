@@ -1,14 +1,15 @@
 apply plugin: 'com.android.application'
 
 android {
-    namespace = "com.tripledger.app"
+    namespace = "com.kestrel.player"
     compileSdk = rootProject.ext.compileSdkVersion
     defaultConfig {
-        applicationId "com.tripledger.app"
+        applicationId "com.kestrel.player"
         minSdkVersion rootProject.ext.minSdkVersion
         targetSdkVersion rootProject.ext.targetSdkVersion
-        versionCode 1
-        versionName "1.0"
+        // CI passes -PappVersionCode=<run number> so each build installs as an update over the last
+        versionCode((project.findProperty('appVersionCode') ?: '1') as int)
+        versionName "1.0." + (project.findProperty('appVersionCode') ?: '1')
         testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
         aaptOptions {
              // Files and dirs to omit from the packaged assets dir, modified to accommodate modern web apps.
@@ -20,10 +21,10 @@ android {
     // update over the previous one. For a Play Store release, replace it with a private key.
     signingConfigs {
         sideload {
-            storeFile file('tripledger-sideload.keystore')
-            storePassword 'tripledger'
-            keyAlias 'tripledger'
-            keyPassword 'tripledger'
+            storeFile file('kestrel-sideload.keystore')
+            storePassword 'kestrel'
+            keyAlias 'kestrel'
+            keyPassword 'kestrel'
         }
     }
     buildTypes {
@@ -50,6 +51,10 @@ dependencies {
     implementation "androidx.coordinatorlayout:coordinatorlayout:$androidxCoordinatorLayoutVersion"
     implementation "androidx.core:core-splashscreen:$coreSplashScreenVersion"
     implementation project(':capacitor-android')
+    implementation "androidx.media3:media3-exoplayer:$media3Version"
+    implementation "androidx.media3:media3-exoplayer-hls:$media3Version"
+    implementation "androidx.media3:media3-exoplayer-dash:$media3Version"
+    implementation "androidx.media3:media3-ui:$media3Version"
     testImplementation "junit:junit:$junitVersion"
     androidTestImplementation "androidx.test.ext:junit:$androidxJunitVersion"
     androidTestImplementation "androidx.test.espresso:espresso-core:$androidxEspressoCoreVersion"

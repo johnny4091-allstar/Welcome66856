@@ -2,6 +2,11 @@ name: Build Android APK
 on:
   push:
   workflow_dispatch:
+env:
+  # Builds pushed to this branch are published as GitHub releases; the app's updater installs the latest one.
+  RELEASE_BRANCH: ccr-84635385-2frt1x
+permissions:
+  contents: write
 jobs:
   apk:
     runs-on: ubuntu-latest
@@ -19,8 +24,25 @@ jobs:
           "$SDKMANAGER" "platforms;android-36" "build-tools;36.0.0" "platform-tools"
       - run: npm ci
       - run: npm run sync
-      - run: cd android && ./gradlew assembleRelease --no-daemon
+      - run: cd android && ./gradlew assembleRelease --no-daemon -PappVersionCode=${{ github.run_number }}
+      - name: Name the APK
+        run: cp android/app/build/outputs/apk/release/app-release.apk KestrelPlayer.apk
       - uses: actions/upload-artifact@v5
         with:
-          name: TripLedger-apk
-          path: android/app/build/outputs/apk/release/app-release.apk
+          name: KestrelPlayer-apk
+          path: KestrelPlayer.apk
+      - name: Publish release for the in-app updater
+        if: github.event_name == 'push' && github.ref_name == env.RELEASE_BRANCH
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          V=${{ github.run_number }}
+          TAG="v1.0.$V"
+          SHA=$(sha256sum KestrelPlayer.apk | cut -d' ' -f1)
+          URL="https://github.com/${GITHUB_REPOSITORY}/releases/download/$TAG/KestrelPlayer.apk"
+          NOTES=$(git log -1 --pretty=%s)
+          jq -n --argjson code "$V" --arg name "1.0.$V" --arg url "$URL" --arg sha "$SHA" --arg notes "$NOTES" \
+            '{versionCode:$code, versionName:$name, url:$url, sha256:$sha, notes:$notes}' > version.json
+          cat version.json
+          gh release create "$TAG" KestrelPlayer.apk version.json \
+            --title "Kestrel Player 1.0.$V" --notes "$NOTES" --target "$GITHUB_SHA" --latest

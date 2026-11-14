@@ -1,43 +1,49 @@
-# TripLedger — Mileage Tracker & IRS Logbook
+# Kestrel Player — IPTV playlist player for Android TV and phones
 
-An Android app that tracks your driving with GPS, lets you categorize trips, and generates IRS-style mileage logs for tax deductions or employer reimbursement. No server or account is needed: all data stays on your device.
+Kestrel plays **your own** IPTV playlist: an Xtream Codes login or an M3U link from your provider. It is a player only and doesn't provide, host or sell any channels or content.
 
 ## Features
 
-**Track**
-- One-tap **START / STOP** GPS trip recording
-- **Auto-track** (works in the background): starts a trip when you drive faster than a set speed (default 15 mph) and ends it after you've been stopped for a few minutes
-- Odometer readings per trip and per vehicle
-- Multiple vehicles, plus workplace or client fields on each trip
-- **Holiday mode** pauses auto-tracking
+**Live TV**
+- Categories, channel list with logos, and a **now/next guide** with a progress bar (Xtream)
+- Native full-screen player (Media3/ExoPlayer) for MPEG-TS, HLS and DASH streams
+- **Channel zapping**: press ▲/▼ or CH+/CH− on the remote while watching
+- Favourites and recently watched channels
+- Live format switch (MPEG-TS or HLS) for channels that won't play
 
-**Categorize**
-- Business / Personal / Medical / Charity, with one-tap buttons for unclassified trips
-- **Working hours**: trips that start inside your hours become Business, the rest Personal
-- Business purpose, notes and tags on each trip
-- Bulk-edit categories, search and filter by period, vehicle or category
-- Split a trip in two at a stop
+**Movies & series**
+- Poster grids by category, details with plot, cast and rating
+- **Resume** where you stopped, plus a "Continue watching" row
+- Seasons and episodes, with the next episode playing automatically
 
-**Report**
-- **PDF** log with date, times, start/end location, purpose, odometer, miles, rate and amount, plus signature lines
-- **Excel (CSV)** export; both open the Android share sheet (email, Drive, WhatsApp…)
-- Business-use **percentage split** for the actual-expenses method
-- Separate reports per vehicle or workplace
-- Editable rates (defaults: 2026 IRS rates of 72.5¢ business, 20.5¢ medical, 14¢ charity; check these on irs.gov)
-- Weekly or monthly reporting reminders (Android notifications)
-- Saved places: trips starting or ending near one are labeled with its name
-- JSON backup and restore
+**Everything else**
+- Several playlists, switched in Settings; Xtream account expiry and connections shown
+- Search across channels, movies and series
+- **Parental lock**: a 4-digit PIN locks chosen categories
+- 8 accent colours
+- Built for the **TV remote** (D-pad navigation, shows in the Android TV / Google TV launcher) and for touch screens
+- **Self-updating**: checks this repo's latest GitHub release and installs new versions after checking their SHA-256
 
-## Install on your phone
+## Install
 
-1. Download [`release/TripLedger-1.0.apk`](release/TripLedger-1.0.apk) to your Android phone (Android 7.0+).
-2. Open it and allow **Install unknown apps** for your browser or file manager when asked.
-3. Open TripLedger. When asked, allow **Location** and **Notifications**.
-4. For auto-tracking, go to Android Settings → Apps → TripLedger → Battery → **Unrestricted**, so Android doesn't stop tracking to save battery.
+1. Download `KestrelPlayer.apk` from the [latest release](https://github.com/johnny4091-allstar/Welcome66856/releases/latest).
+   - **Android TV / Fire TV:** install the Downloader app, then enter
+     `https://github.com/johnny4091-allstar/Welcome66856/releases/latest/download/KestrelPlayer.apk`
+2. Allow **Install unknown apps** when asked.
+3. Open Kestrel Player → **Add a playlist** → enter your Xtream server, username and password (or an M3U link).
 
-While a trip is recording or auto-track is on, a "TripLedger" notification stays visible. That foreground service keeps GPS running with the screen off or another app open. If you swipe TripLedger away from recent apps, tracking stops until you open it again.
+## Updates
 
-## Build the APK yourself
+Every push to the `ccr-84635385-2frt1x` branch makes GitHub Actions build the APK and publish a release `v1.0.<run>` with two files:
+
+- `KestrelPlayer.apk`
+- `version.json`, the manifest the app reads: `{ versionCode, versionName, url, sha256, notes }`
+
+On launch (at most every 6 hours, or from Settings → Updates → Check now) the app fetches `releases/latest/download/version.json`. If `versionCode` is higher than the installed one, it offers **Update now**. It downloads the APK, refuses it unless the SHA-256 matches, and opens Android's installer. The first time, Android asks you to allow Kestrel to install apps.
+
+The repository must be public for the app to download releases.
+
+## Build it yourself
 
 Requires Node 22, JDK 21 and the Android SDK (platform 36).
 
@@ -46,20 +52,15 @@ npm install
 npm run build:release        # -> android/app/build/outputs/apk/release/app-release.apk
 ```
 
-GitHub Actions (`.github/workflows/android.yml`) also builds the APK on every push. Download it from the run's **Artifacts**.
+The app is signed with `android/app/kestrel-sideload.keystore` (password `kestrel`), which is committed so every build installs as an update over the last. **Before publishing to Google Play, create your own private key and keep it out of git.**
 
-The app is signed with `android/app/tripledger-sideload.keystore` (password `tripledger`), which is committed so every build installs as an update over the last. **Before publishing to Google Play, create your own private key and keep it out of git.** To release an update, bump `versionCode` in `android/app/build.gradle`.
+`www/` also runs in a desktop browser for UI work (`npx http-server www`), but most IPTV servers block browser requests (CORS), so real playback needs the Android app.
 
 ## Project layout
 
-- `www/` — the app UI (HTML/CSS/JS), also runs as a website
+- `www/` — the app UI (HTML/CSS/JS, no build step)
 - `android/` — the native Android project (Capacitor)
-- Native plugins: background geolocation (foreground service), filesystem + share (PDF/CSV export), local notifications (report reminders)
-
-## Not included yet
-
-- Address lookup: locations show as coordinates unless you save the place or type a name, so no location data leaves the phone.
-- Teams/manager approval, iBeacon detection and cloud sync need a backend server.
-- iPhone: `npx cap add ios` creates the project, but building it requires a Mac with Xcode.
-
-This app is a record-keeping tool, not tax advice.
+  - `PlayerActivity.java` — full-screen ExoPlayer with channel zapping
+  - `PlayerPlugin.java` — opens the player from the UI and returns the resume position
+  - `UpdaterPlugin.java` — downloads, verifies and installs updates
+- `.github/workflows/android.yml` — builds the APK and publishes releases
